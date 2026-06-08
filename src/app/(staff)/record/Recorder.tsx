@@ -10,6 +10,7 @@ import {
 } from "@/lib/constants";
 import { formatDuration } from "@/lib/format";
 import { categoryLabel } from "@/lib/labels";
+import { toErrorMessage } from "@/lib/errors";
 import type { ScriptCategory } from "@/lib/types";
 
 interface ScriptOption {
@@ -25,7 +26,47 @@ interface SegmentInfo {
   url: string;
 }
 
-type Phase = "idle" | "recording" | "recorded" | "submitting" | "submitted";
+function ProcLine({
+  label,
+  state,
+}: {
+  label: string;
+  state: "idle" | "active" | "done";
+}) {
+  return (
+    <li className="flex items-center gap-2">
+      {state === "done" ? (
+        <span className="text-emerald-600">✓</span>
+      ) : state === "active" ? (
+        <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-brand" />
+      ) : (
+        <span className="h-2.5 w-2.5 rounded-full bg-slate-300" />
+      )}
+      <span
+        className={
+          state === "idle"
+            ? "text-slate-400"
+            : state === "active"
+              ? "font-medium text-slate-800"
+              : "text-slate-600"
+        }
+      >
+        {label}
+        {state === "active" && "中…"}
+      </span>
+    </li>
+  );
+}
+
+type Phase =
+  | "idle"
+  | "recording"
+  | "recorded"
+  | "submitting"
+  | "processing"
+  | "done";
+
+type ProcStep = "transcribing" | "evaluating" | "done" | "error";
 
 /** 対応する mimeType を優先順に探す。 */
 function pickMimeType(): string {
@@ -65,6 +106,8 @@ export function Recorder({
   const [error, setError] = useState<string | null>(null);
   const [submittedId, setSubmittedId] = useState<string | null>(null);
   const [supported, setSupported] = useState(true);
+  const [procStep, setProcStep] = useState<ProcStep>("transcribing");
+  const [procError, setProcError] = useState<string | null>(null);
 
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -198,6 +241,41 @@ export function Recorder({
     setPhase("idle");
   }, []);
 
+  // 文字起こし→評価のパイプラインを順次実行。失敗時は再実行できるようにする。
+  const runPipeline = useCallback(async (recordingId: string) => {
+    setPhase("processing");
+    setProcError(null);
+    try {
+      setProcStep("transcribing");
+      const tr = await fetch("/api/transcribe", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ recordingId }),
+      });
+      if (!tr.ok) {
+        const j = (await tr.json().catch(() => ({}))) as { error?: string };
+        throw new Error(j.error ?? "文字起こしに失敗しました。");
+      }
+
+      setProcStep("evaluating");
+      const ev = await fetch("/api/evaluate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ recordingId }),
+      });
+      if (!ev.ok) {
+        const j = (await ev.json().catch(() => ({}))) as { error?: string };
+        throw new Error(j.error ?? "評価に失敗しました。");
+      }
+
+      setProcStep("done");
+      setPhase("done");
+    } catch (e) {
+      setProcError(toErrorMessage(e));
+      setProcStep("error");
+    }
+  }, []);
+
   const submit = useCallback(async () => {
     if (segmentsRef.current.length === 0) return;
     setPhase("submitting");
@@ -249,7 +327,7 @@ export function Recorder({
         .eq("id", recordingId);
 
       setSubmittedId(recordingId);
-      setPhase("submitted");
+      await runPipeline(recordingId);
     } catch (e) {
       console.error(e);
       setError(
@@ -257,7 +335,7 @@ export function Recorder({
       );
       setPhase("recorded");
     }
-  }, [scriptId, staffId, tenantId, storeId]);
+  }, [scriptId, staffId, tenantId, storeId, runPipeline]);
 
   if (!supported) {
     return (
@@ -360,7 +438,7 @@ export function Recorder({
         )}
       </div>
 
-      {segments.length > 0 && phase !== "submitted" && (
+      {segments.length > 0 && (phase === "recorded" || phase === "submitting") && (
         <div className="card space-y-3">
           <h2 className="text-sm font-semibold text-slate-700">
             プレビュー（{segments.length} セグメント / 合計{" "}
@@ -379,13 +457,53 @@ export function Recorder({
         </div>
       )}
 
-      {phase === "submitted" && (
+      {phase === "processing" && (
+        <div className="card space-y-4">
+          <p className="text-sm font-medium text-slate-700">
+            提出しました。処理を行っています…
+          </p>
+          <ol className="space-y-2 text-sm">
+            <ProcLine
+              label="文字起こし"
+              state={
+                procStep === "transcribing"
+                  ? "active"
+                  : procStep === "error"
+                    ? "idle"
+                    : "done"
+              }
+            />
+            <ProcLine
+              label="評価"
+              state={
+                procStep === "evaluating"
+                  ? "active"
+                  : procStep === "done"
+                    ? "done"
+                    : "idle"
+              }
+            />
+          </ol>
+          {procError && (
+            <div className="space-y-2">
+              <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+                {procError}
+              </p>
+              <button
+                className="btn-secondary px-4 py-2 text-sm"
+                onClick={() => submittedId && runPipeline(submittedId)}
+              >
+                処理を再実行する
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {phase === "done" && (
         <div className="card space-y-3 border-emerald-200 bg-emerald-50">
           <p className="font-medium text-emerald-800">
-            提出しました。文字起こしと評価を順次行います。
-          </p>
-          <p className="text-sm text-emerald-700">
-            結果は「スコア履歴」から確認できます。
+            評価が完了しました。
           </p>
           <div className="flex gap-3">
             {submittedId && (
