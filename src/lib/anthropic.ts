@@ -1,6 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { ANTHROPIC_MODEL } from "@/lib/constants";
 import type { EvaluationModelOutput, Rubric } from "@/lib/types";
+
+/** 評価モデル（Sonnet 系想定。現行 Sonnet を既定、env で上書き可）。サーバー専用。 */
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6";
 
 let _client: Anthropic | null = null;
 

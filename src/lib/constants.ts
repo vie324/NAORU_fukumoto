@@ -20,7 +20,3 @@ export const RECORDING_SEGMENT_SEC = Number(
 
 /** 録音時のエンコード設定（モノラル・低ビットレートでファイルを小さく保つ）。 */
 export const AUDIO_BITS_PER_SECOND = 48_000;
-
-/** 評価モデル（Sonnet 系想定。現行 Sonnet を既定、env で上書き可）。 */
-export const ANTHROPIC_MODEL =
-  process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6";
