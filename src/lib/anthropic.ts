@@ -129,7 +129,7 @@ export async function evaluateTranscript(input: {
   for (let attempt = 0; attempt < 2; attempt++) {
     const res = await client.messages.create({
       model: ANTHROPIC_MODEL,
-      max_tokens: 2048,
+      max_tokens: 4096,
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: userPrompt }],
     });

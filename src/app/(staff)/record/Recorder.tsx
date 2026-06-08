@@ -281,8 +281,11 @@ export function Recorder({
     setPhase("submitting");
     setError(null);
     const supabase = createClient();
-    const ext = mimeToExt(mimeRef.current || "audio/webm");
-    const contentType = mimeRef.current || "audio/webm";
+    // 実際に録音された Blob の MIME を優先（iPad/Safari の mp4 等を正しく扱う）。
+    const effectiveMime =
+      mimeRef.current || segmentsRef.current[0]?.blob.type || "audio/webm";
+    const ext = mimeToExt(effectiveMime);
+    const contentType = effectiveMime;
 
     try {
       const { data: rec, error: recErr } = await supabase
