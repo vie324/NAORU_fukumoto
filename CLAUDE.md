@@ -14,7 +14,7 @@ Claude が点数化＋フィードバック。スコアは履歴として蓄積�
 - Tailwind CSS（自前の最小コンポーネント。shadcn/ui は未使用）
 - Supabase（PostgreSQL + RLS、Storage、Auth）リージョン Tokyo / ap-northeast-1
 - OpenAI Whisper（文字起こし、`whisper-1`）— サーバー専用
-- Anthropic Claude（評価）— サーバー専用
+- Anthropic Claude（評価、既定 `claude-sonnet-4-6`、`ANTHROPIC_MODEL` で上書き可）— サーバー専用
 - Vercel デプロイ（feature ブランチ → Preview）
 
 ## ディレクトリ
